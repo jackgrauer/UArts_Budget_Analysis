@@ -1,6 +1,7 @@
 #Step 1: Imports
 import pandas as pd
 import pprint
+import numpy as np
 
 #Step 2: Define data dictionary
 
@@ -479,58 +480,115 @@ data_dict = {
             0, 0, 0, 4823456, 1123456, 74801234, 33234, 45012345, 46023456
         ],
     },
-
 }
 
-#Step 3: Convert data_dict to pandas DataFrames
-# Initialize an empty dictionary to hold the dataframes
+# Step 3: Union Schema
+# Create a master list of all categories
+master_categories = set()
+for data in data_dict.values():
+    master_categories.update(data["Category"])
+
+master_categories = list(master_categories)
+
+# Ensure each year's data includes all categories
+for fiscal_year, data in data_dict.items():
+    current_categories = data["Category"]
+    current_values = data["Current Year Values"]
+    
+    # Create a dictionary for easy lookup
+    current_data = dict(zip(current_categories, current_values))
+    
+    # Ensure all categories are present
+    updated_values = [current_data.get(category, np.nan) for category in master_categories]
+    
+    # Update the data dictionary
+    data_dict[fiscal_year]["Category"] = master_categories
+    data_dict[fiscal_year]["Current Year Values"] = updated_values
+
 data_frames = {}
 
-# Iterate through the data dictionary
-for year, data in data_dict.items():
-    # Ensure the lengths of 'Category' and 'Current Year Values' match
-    if len(data["Category"]) == len(data["Current Year Values"]):
-        # Create a DataFrame for the current year
-        df = pd.DataFrame({
-            'Category': data["Category"],
-            'Current Year Values': data["Current Year Values"]
-        })
-        data_frames[year] = df
-    else:
-        print(f"Length mismatch in {year}: Categories ({len(data['Category'])}) vs Values ({len(data['Current Year Values'])})")
-
-# Print a summary of variables across years
-years = data_dict.keys()
-summary = {}
-
-for year in years:
-    categories = data_dict[year]["Category"]
-    summary[year] = categories
-
-for year, categories in summary.items():
-    print(f"Year: {year}")
-    print(f"Categories ({len(categories)}): {', '.join(categories)}\n")
+# Convert the data_dict to DataFrames and store in data_frames
+for fiscal_year, data in data_dict.items():
+    data_frames[fiscal_year] = pd.DataFrame(data)
 
 
 
+# Step 3: Ensure all data entries have the same length
+
+for fiscal_year, data in data_dict.items():
+    category_length = len(data["Category"])
+    values_length = len(data["Current Year Values"])
+    
+    if values_length < category_length:
+        data["Current Year Values"].extend(["No Value"] * (category_length - values_length))
+
+# Create DataFrames from the adjusted data_dict
+for fiscal_year, data in data_dict.items():
+    data_frames[fiscal_year] = pd.DataFrame(data)
+
+# Check the lengths to confirm they are now matching
+for fiscal_year, df in data_frames.items():
+    print(f"{fiscal_year} - Categories: {len(df['Category'])}, Values: {len(df['Current Year Values'])}")
+
+# Display the data_frames
+for fiscal_year, df in data_frames.items():
+    print(f"\nData for {fiscal_year}:\n", df)
 
 
 
 
-# Step 4: Test the functionality with some basic operations
 
-# 1. Check the shape of each DataFrame
-for year, df in data_frames.items():
-    print(f"{year} DataFrame shape: {df.shape}")
 
-# 2. Display the first few rows of the DataFrame for FY2020
-print("\nFirst few rows of FY2020IPEDS DataFrame:")
-print(data_frames['FY2020IPEDS'].head())
 
-# 3. Check for missing values in the FY2020 DataFrame
-print("\nMissing values in FY2020IPEDS DataFrame:")
-print(data_frames['FY2020IPEDS'].isnull().sum())
+"""
 
-# 4. Describe the numerical data in FY2020 DataFrame
-print("\nSummary statistics for FY2020IPEDS DataFrame:")
-print(data_frames['FY2020IPEDS'].describe())
+
+
+
+
+# Step 3: Inflation Control
+# Details: Adjusting data for inflation using the CPI-U index for urban areas, base year 2020.
+# Source: https://alfred.stlouisfed.org/series?seid=CUURA102SA0&utm_source=series_page&utm_medium=related_content&utm_term=related_resources&utm_campaign=alfred#0
+
+inflation_data = {
+    "DATE": [
+        "2002-01-01", "2003-01-01", "2004-01-01", "2005-01-01", "2006-01-01", "2007-01-01", "2008-01-01",
+        "2009-01-01", "2010-01-01", "2011-01-01", "2012-01-01", "2013-01-01", "2014-01-01", "2015-01-01",
+        "2016-01-01", "2017-01-01", "2018-01-01", "2019-01-01", "2020-01-01", "2021-01-01", "2022-01-01"
+    ],
+    "CUURA102SA0_20240515": [
+        71.48166, 72.96818, 76.01844, 78.97218, 81.99026, 83.80646, 86.52711, 86.32009, 87.97463,
+        90.37733, 91.99885, 93.06027, 94.25489, 94.10688, 94.81172, 95.94560, 97.24003, 99.19734,
+        100.00000, 104.37011, None
+    ]
+}
+
+# Create DataFrame for inflation data
+inflation_index_df = pd.DataFrame(inflation_data)
+inflation_index_df['DATE'] = pd.to_datetime(inflation_index_df['DATE'])
+inflation_index_df.set_index('DATE', inplace=True)
+
+# Adjusting data_frames for inflation
+data_cpi_controlled = {}
+
+for fiscal_year, df in data_frames.items():
+    year = int(fiscal_year[2:6])
+    inflation_index = inflation_index_df.loc[f'{year}-01-01', 'CUURA102SA0_20240515']
+    base_index = inflation_index_df.loc['2020-01-01', 'CUURA102SA0_20240515']
+    adjustment_factor = base_index / inflation_index
+    
+    df_adjusted = df.copy()
+    df_adjusted.iloc[:, 1:] = df.iloc[:, 1:] * adjustment_factor
+    
+    data_cpi_controlled[fiscal_year] = df_adjusted
+
+# Display the adjusted data
+for fiscal_year, df in data_cpi_controlled.items():
+    print(f"\nAdjusted Data for {fiscal_year}:\n", df.to_string(index=False))
+
+
+
+"""
+
+
+
