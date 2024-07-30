@@ -2,6 +2,8 @@
 import pandas as pd
 import pprint
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 #Step 2: Define data dictionary
 
@@ -480,7 +482,16 @@ data_dict = {
             0, 0, 0, 4823456, 1123456, 74801234, 33234, 45012345, 46023456
         ],
     },
+    
 }
+
+
+
+
+
+
+
+
 
 # Step 3: Union Schema
 # Create a master list of all categories
@@ -513,7 +524,14 @@ for fiscal_year, data in data_dict.items():
 
 
 
-# Step 3: Ensure all data entries have the same length
+
+
+
+
+
+
+
+# Step 4: Ensure all data entries have the same length
 
 for fiscal_year, data in data_dict.items():
     category_length = len(data["Category"])
@@ -530,25 +548,7 @@ for fiscal_year, data in data_dict.items():
 for fiscal_year, df in data_frames.items():
     print(f"{fiscal_year} - Categories: {len(df['Category'])}, Values: {len(df['Current Year Values'])}")
 
-# Display the data_frames
-for fiscal_year, df in data_frames.items():
-    print(f"\nData for {fiscal_year}:\n", df)
-
-
-
-
-
-
-
-"""
-
-
-
-
-
-# Step 3: Inflation Control
-# Details: Adjusting data for inflation using the CPI-U index for urban areas, base year 2020.
-# Source: https://alfred.stlouisfed.org/series?seid=CUURA102SA0&utm_source=series_page&utm_medium=related_content&utm_term=related_resources&utm_campaign=alfred#0
+# Step 5: Inflation Control, adjusting data for inflation using the CPI-U index for urban areas, base year 2020. Data Source: https://alfred.stlouisfed.org/series?seid=CUURA102SA0&utm_source=series_page&utm_medium=related_content&utm_term=related_resources&utm_campaign=alfred#0
 
 inflation_data = {
     "DATE": [
@@ -582,13 +582,83 @@ for fiscal_year, df in data_frames.items():
     
     data_cpi_controlled[fiscal_year] = df_adjusted
 
-# Display the adjusted data
+
+
+
+
+
+
+
+# Step 6: Control for COVID-19 impact
+
+# Source for COVID-19 impact data: [Google Mobility Reports](https://www.gstatic.com/covid19/mobility/2022-10-15_US_Pennsylvania_Mobility_Report_en.pdf)
+
+# COVID-19 impact data (use real data or factors you have)
+covid_impact_data = {
+    "DATE": [
+        "2020-01-01", "2021-01-01"
+    ],
+    "COVID_IMPACT_FACTOR": [
+        0.8, 0.9  # Example factors; adjust according to real data
+    ]
+}
+
+# Create DataFrame for COVID-19 impact data
+covid_impact_df = pd.DataFrame(covid_impact_data)
+covid_impact_df['DATE'] = pd.to_datetime(covid_impact_df['DATE'])
+covid_impact_df.set_index('DATE', inplace=True)
+
+# List of years to adjust for COVID-19
+years_to_adjust = [2020, 2021]
+
+# Adjusting data_cpi_controlled for COVID-19 impact
+data_covid_controlled = {}
+
 for fiscal_year, df in data_cpi_controlled.items():
-    print(f"\nAdjusted Data for {fiscal_year}:\n", df.to_string(index=False))
+    year = int(fiscal_year[2:6])
+    if year in years_to_adjust:
+        try:
+            impact_index = covid_impact_df.loc[f'{year}-01-01', 'COVID_IMPACT_FACTOR']
+            df_adjusted = df.copy()
+            df_adjusted.iloc[:, 1:] = df.iloc[:, 1:] * impact_index
+            data_covid_controlled[fiscal_year] = df_adjusted
+            print(f"{fiscal_year} - Adjusted for COVID-19 impact")
+        except KeyError:
+            print(f"Warning: COVID-19 impact data for {year} is missing or incomplete.")
+    else:
+        data_covid_controlled[fiscal_year] = df
 
 
 
-"""
 
 
 
+
+
+
+
+# Step 7: Visualize Key Variables Over Time
+
+# Combine all fiscal years into a single DataFrame for easier plotting
+combined_df = pd.concat(data_covid_controlled.values(), keys=data_covid_controlled.keys())
+combined_df.reset_index(level=0, inplace=True)
+combined_df.rename(columns={'level_0': 'Fiscal Year'}, inplace=True)
+
+# Melt the DataFrame to have a long-form DataFrame suitable for plotting
+long_df = pd.melt(combined_df, id_vars=['Fiscal Year', 'Category'], value_vars=['Current Year Values'],
+                  var_name='Variable', value_name='Value')
+
+# Plot key variables over time
+plt.figure(figsize=(14, 8))
+sns.lineplot(data=long_df, x='Fiscal Year', y='Value', hue='Category', marker='o')
+
+# Customize the plot
+plt.title('Key Variables Over Time')
+plt.xlabel('Fiscal Year')
+plt.ylabel('Adjusted Values')
+plt.xticks(rotation=45)
+plt.legend(title='Category', bbox_to_anchor=(1.05, 1), loc='upper left')
+plt.tight_layout()
+
+# Show the plot
+plt.show()
